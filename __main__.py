@@ -4,8 +4,7 @@ from dotenv import load_dotenv
 # of the current directory.
 load_dotenv()
 
-from chatbot import bot
+import app
 
 if __name__ == "__main__":
-    bot.polling()
-
+    app.start()

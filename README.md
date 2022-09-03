@@ -2,6 +2,6 @@
 
 ## Resources:
 
-- [ ] Import Lnbits wallet via QRCODE
+- [x] Import Lnbits wallet via QRCODE
 - [ ] Lightning Address support
 - [ ] Basic wallet resources (Balance, Transactions, Receive)

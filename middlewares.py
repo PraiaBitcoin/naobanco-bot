@@ -1,4 +1,5 @@
 from database import db
+from fastapi import Request
 from tinydb import Query
 
 def checkIfExistWallet(func: object):

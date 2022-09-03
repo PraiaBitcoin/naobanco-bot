@@ -3,7 +3,8 @@ from middlewares import checkIfExistWallet
 from lib.rate import get_price_bitcoin_in_brl
 
 from database import db
-from configs import TELEGRAM_API_TOKEN
+from fastapi import APIRouter
+from configs import PUBLIC_URL_ENDPOINT, TELEGRAM_API_TOKEN
 from telebot import TeleBot
 
 from tinydb import Query
@@ -80,13 +81,13 @@ def receive(data: object):
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     amount = int(data.text.split()[-1])
-    invoice = lnbits.create_invoice(amount)
+    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT)
     payment_hash = invoice["payment_hash"]
     payment_request = invoice["payment_request"]
     
     redis.set(f"invoice.{payment_hash}", dumps({"id": data.from_user.id}))
     redis.expire(f"invoice.{payment_hash}", 86400)
-    
+
     create_qrcode = MakeQR(f"lightning:{payment_request}")
     qrcode_bytes = BytesIO()
     create_qrcode.save(qrcode_bytes)

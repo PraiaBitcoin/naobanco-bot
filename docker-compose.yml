@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: bifrost.redis
+    command: 
+      - redis-server
+      - redis.conf
+      - --appendonly yes
+    ports:
+      - 6379:6373
+    volumes:
+      - ./data/redis:/data

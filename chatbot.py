@@ -1,3 +1,4 @@
+from io import BytesIO
 from middlewares import checkIfExistWallet
 from lib.rate import get_price_bitcoin_in_brl
 from database import db
@@ -5,6 +6,7 @@ from configs import TELEGRAM_API_TOKEN
 from telebot import TeleBot
 from tinydb import Query
 from lnbits import Lnbits
+from qrcode import make as MakeQR
 
 from json import loads
 from cv2 import QRCodeDetector, imread
@@ -66,3 +68,20 @@ def balance(data: object):
     message+= f"<b>BTC:</b> {balance_in_sat}\n"
     message+= f"<b>BRL:</b> {locale.currency(balance_in_brl, symbol=None)}"
     return bot.reply_to(data, message)
+
+@bot.message_handler(commands=["receive", "receber"], regexp="/receber|/receive [0-9]")
+@checkIfExistWallet
+def receive(data: object):
+    wallet = db.get(Query().id == data.from_user.id)
+    lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+
+    amount = int(data.text.split()[-1])
+    payment_request = lnbits.create_invoice(amount)["payment_request"]
+
+    create_qrcode = MakeQR(f"lightning:{payment_request}")
+    qrcode_bytes = BytesIO()
+    create_qrcode.save(qrcode_bytes)
+    qrcode_bytes.seek(0)
+
+    caption = f"<code>{payment_request}</code>"
+    bot.send_photo(data.from_user.id, qrcode_bytes, caption=caption)

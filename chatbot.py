@@ -1,15 +1,19 @@
-from io import BytesIO
+from services.redis import redis
 from middlewares import checkIfExistWallet
 from lib.rate import get_price_bitcoin_in_brl
+
 from database import db
 from configs import TELEGRAM_API_TOKEN
 from telebot import TeleBot
+
 from tinydb import Query
 from lnbits import Lnbits
 from qrcode import make as MakeQR
 
-from json import loads
+from json import dumps, loads
 from cv2 import QRCodeDetector, imread
+
+from io import BytesIO
 from re import search
 from os import remove
 
@@ -76,8 +80,13 @@ def receive(data: object):
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     amount = int(data.text.split()[-1])
-    payment_request = lnbits.create_invoice(amount)["payment_request"]
-
+    invoice = lnbits.create_invoice(amount)
+    payment_hash = invoice["payment_hash"]
+    payment_request = invoice["payment_request"]
+    
+    redis.set(f"invoice.{payment_hash}", dumps({"id": data.from_user.id}))
+    redis.expire(f"invoice.{payment_hash}", 86400)
+    
     create_qrcode = MakeQR(f"lightning:{payment_request}")
     qrcode_bytes = BytesIO()
     create_qrcode.save(qrcode_bytes)

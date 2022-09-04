@@ -59,6 +59,13 @@ def load_qrcode(data: object):
             db.update({"api": service, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"}, Query().id == user_id)
             return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
 
+@bot.message_handler(commands=["me"])
+@checkIfExistWallet
+def me(data: object):
+    address = data.from_user.username + "@" + PUBLIC_URL_ENDPOINT.split("//")[-1].replace("/", "")
+    message = f"Você pode receber bitcoins usando este endereço <code>{address}</code>."
+    return bot.reply_to(data, message)
+
 @bot.message_handler(commands=["balance", "saldo"])
 @checkIfExistWallet
 def balance(data: object):

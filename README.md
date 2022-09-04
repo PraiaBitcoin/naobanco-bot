@@ -1,5 +1,7 @@
 # Lnbits Chatbot
 
+A simple telegram wallet to use with boltcard.
+
 ## Resources:
 
 - [x] Import Lnbits wallet via QRCODE

@@ -50,13 +50,13 @@ def load_qrcode(data: object):
         if ("wallet?usr" in qr):
             service = qr.split("/wallet")[0] + "/api"
             wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.insert({"id": user_id, "username": username, "api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
+            db.insert({"id": user_id, "username": username, "api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"})
             return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
     else:
         if ("wallet?usr" in qr):
             service = qr.split("/wallet")[0] + "/api"
             wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.update({"api": service, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
+            db.update({"api": service, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"}, Query().id == user_id)
             return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
 
 @bot.message_handler(commands=["balance", "saldo"])
@@ -110,6 +110,9 @@ def pay(data: object):
     address = command[-1]
 
     from_wallet = db.get(Query().id == data.from_user.id)
+    if (from_wallet["type"] != "full-acess"):
+        return bot.reply_to(data, "Sua carteira é apenas de visualização, não é possível acessar este recurso.")
+    
     from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
     if ("lnbc" in address):
         pay_invoice = from_lnbits.pay_invoice(address)
@@ -127,7 +130,7 @@ def pay(data: object):
 
         # Generate lightning invoice.
         invoice = to_lnbits.create_invoice(amount)["payment_request"]
-
+    
         pay_invoice = from_lnbits.pay_invoice(invoice)
         payment_hash = pay_invoice.get("payment_hash")
         if (payment_hash == None):

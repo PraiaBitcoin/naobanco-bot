@@ -34,3 +34,9 @@ Start your ngrok using the command below (if you don't know how to configure a G
 ```bash
 $ ngrok http 9651 &
 ```
+
+Iniciando o ChatBot.
+
+```bash
+$ ./venv/bin/python __main__.py
+```

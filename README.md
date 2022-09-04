@@ -37,5 +37,6 @@ $ ngrok http 9651 &
 
 Starting the ChatBot.
 ```bash
+$ docker-compose up -d
 $ ./venv/bin/python __main__.py
 ```

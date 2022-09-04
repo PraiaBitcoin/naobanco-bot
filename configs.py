@@ -1,5 +1,4 @@
 from lib.ngrok import get_ngrok_url
-from secrets import token_hex
 from os import environ
 
 # API configuration.

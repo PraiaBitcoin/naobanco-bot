@@ -26,3 +26,10 @@ else:
 PUBLIC_URL_ENDPOINT = environ.get("PUBLIC_URL_ENDPOINT", f"http://127.0.0.1:{API_PORT}")
 if (NGROK_ACTIVE == True) and (PUBLIC_URL_ENDPOINT == f"http://127.0.0.1:{API_PORT}"):
     PUBLIC_URL_ENDPOINT = get_ngrok_url()
+
+# Bitcoin configuration.
+BTC_HOST = environ.get("BTC_HOST", "http://127.0.0.1:8332") 
+BTC_USER = environ.get("BTC_USER")
+BTC_PASS = environ.get("BTC_PASS")
+
+BTC_ZMQ_TX = environ.get("BTC_ZMQ_TX", "tcp://127.0.0.1:28333")

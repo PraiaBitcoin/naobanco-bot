@@ -1,3 +1,8 @@
+from embit.networks import NETWORKS
+from embit.script import p2wpkh
+from embit.bip32 import HDKey
+
+from services.bitcoin import bitcoin
 from services.redis import redis
 from middlewares import checkIfExistWallet
 from lib.rate import get_price_bitcoin_in_brl
@@ -46,19 +51,33 @@ def load_qrcode(data: object):
 
     user_id = data.from_user.id
     username = data.from_user.username
-    if not db.get(Query().id == user_id):
-        if ("wallet?usr" in qr):
-            service = qr.split("/wallet")[0] + "/api"
-            wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.insert({"id": user_id, "username": username, "api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"})
-            return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
-    else:
-        if ("wallet?usr" in qr):
-            service = qr.split("/wallet")[0] + "/api"
-            wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.update({"api": service, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"}, Query().id == user_id)
-            return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
-
+    if ("wallet?usr" in qr):
+        wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
+        api = qr.split("/wallet")[0] + "/api"
+        if not db.get(Query().id == user_id):
+            db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"})
+        else:
+            db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"}, Query().id == user_id)
+        return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
+    
+    elif (qr[:4].upper() in ["ZPUB"]):
+        try:
+            zpub = HDKey.from_string(qr)
+            zpub.version = NETWORKS["main"]["zpub"]
+        except:
+            return bot.reply_to(data, "Não foi possível importar sua carteira de apenas visualização.")
+        
+        for path in range(0, 20):
+            address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS["main"])
+            bitcoin.importaddress(address)
+            redis.set(address, dumps({"id": user_id}))
+        
+        if not db.get(Query().id == user_id):
+            db.insert({"id": user_id, "zpub": qr, "path": 0})
+        else:
+            db.update({"zpub": qr, "path": 0}, Query().id == user_id)
+        return bot.reply_to(data, "Sua carteira de apenas visualização foi importado com sucesso.")
+    
 @bot.message_handler(commands=["me"])
 @checkIfExistWallet
 def me(data: object):
@@ -103,7 +122,7 @@ def receive(data: object):
     qrcode_bytes.seek(0)
 
     caption = f"<code>{payment_request}</code>"
-    bot.send_photo(data.from_user.id, qrcode_bytes, caption=caption)
+    return bot.send_photo(data.from_user.id, qrcode_bytes, caption=caption)
 
 @bot.message_handler(commands=["pay", "pagar"], func=lambda data: len(data.text.split()) >= 2)
 @checkIfExistWallet
@@ -188,3 +207,28 @@ def transactions(data: object):
         message += f"<i>{amount_sat_format} sats {settled_at_format}</i>\n"
     
     return bot.reply_to(data, message)
+
+@bot.message_handler(commands=["onchain", "address", "addr"])
+@checkIfExistWallet
+def onchain(data: object):
+    user_id = data.from_user.id
+    wallet = db.get(Query().id == user_id)
+    if (wallet.get("zpub") == None):
+        return bot.reply_to(data, "Você precisa importar sua carteira de visualização primeiro, para gerar uma carteira onchain.") 
+    
+    zpub = HDKey.from_string(wallet["zpub"])
+    zpub.version = NETWORKS["main"]["zpub"]
+    path = wallet["path"]
+
+    address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS["main"])
+    if (redis.get(address) == None):
+        redis.set(address, dumps({"id": user_id}))
+
+    create_qrcode = MakeQR(f"bitcoin:{address}")
+    qrcode_bytes = BytesIO()
+
+    create_qrcode.save(qrcode_bytes)
+    qrcode_bytes.seek(0)
+    
+    caption = f"Você pode receber bitcoins usando endereço <code>{address}</code>"
+    return bot.send_photo(user_id, qrcode_bytes, caption=caption)

@@ -44,17 +44,18 @@ def load_qrcode(data: object):
     remove(f"data/{file_name}")
 
     user_id = data.from_user.id
+    username = data.from_user.username
     if not db.get(Query().id == user_id):
         if ("wallet?usr" in qr):
             service = qr.split("/wallet")[0] + "/api"
             wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.insert({"id": user_id, "api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
+            db.insert({"id": user_id, "username": username, "api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
             return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
     else:
         if ("wallet?usr" in qr):
             service = qr.split("/wallet")[0] + "/api"
             wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
-            db.update({"api": service, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
+            db.update({"api": service, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
             return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
 
 @bot.message_handler(commands=["balance", "saldo"])
@@ -74,7 +75,7 @@ def balance(data: object):
     message+= f"<b>BRL:</b> {locale.currency(balance_in_brl, symbol=None)}"
     return bot.reply_to(data, message)
 
-@bot.message_handler(commands=["receive", "receber"], regexp="/receber|/receive [0-9]")
+@bot.message_handler(commands=["receive", "receber", "invoice"], regexp="/receber|/receive|/invoice [0-9]")
 @checkIfExistWallet
 def receive(data: object):
     wallet = db.get(Query().id == data.from_user.id)
@@ -95,3 +96,55 @@ def receive(data: object):
 
     caption = f"<code>{payment_request}</code>"
     bot.send_photo(data.from_user.id, qrcode_bytes, caption=caption)
+
+@bot.message_handler(commands=["pay", "pagar"], func=lambda data: len(data.text.split()) >= 2)
+@checkIfExistWallet
+def pay(data: object):
+    command = data.text.split()[1:]
+    try:
+        amount = int(command[0])
+    except:
+        amount = None
+    
+    address = command[-1]
+
+    from_wallet = db.get(Query().id == data.from_user.id)
+    from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
+    if ("lnbc" in address):
+        pay_invoice = from_lnbits.pay_invoice(address)
+        payment_hash = pay_invoice.get("payment_hash")
+        if (payment_hash == None):
+            return bot.reply_to(data, "Não foi possível pagar á fatura.")
+        else:
+            decode_invoice = from_lnbits.decode_invoice(address)
+            amount = round(decode_invoice.get("amount") / 1000)
+            return bot.reply_to(data, f"Fatura <code>{payment_hash}</code> de {amount} sats paga.")
+    
+    elif (address[0] == "@") and (amount != None):
+        to_wallet = db.get(Query().username == address[1:])
+        to_lnbits = Lnbits(to_wallet["admin_key"], to_wallet["invoice_key"], url=to_wallet["api"])
+
+        # Generate lightning invoice.
+        invoice = to_lnbits.create_invoice(amount)["payment_request"]
+
+        pay_invoice = from_lnbits.pay_invoice(invoice)
+        payment_hash = pay_invoice.get("payment_hash")
+        if (payment_hash == None):
+            return bot.reply_to(data, f"Não foi possível pagar {address}.")
+        else:
+            return bot.reply_to(data, f"{amount} sats foi pagao {address}.")
+    
+    elif ("@" in address) and (amount != None):
+        username, service = address.split("@")[-1]
+        try:
+            callback = requests.get(f"http://{service}/.well-known/lnurlp/{username}").json()["callback"]   
+            invoice = requests.get(callback, params={"amount": amount}).json()["pr"]
+        except:
+            return bot.reply_to(data, "Não foi possível identificar o Lightning Address.")
+        
+        pay_invoice = from_lnbits.pay_invoice(invoice)
+        payment_hash = pay_invoice.get("payment_hash")
+        if (payment_hash == None):
+            return bot.reply_to(data, f"Não foi possível pagar {address}.")
+        else:
+            return bot.reply_to(data, f"{amount} sats foi pagao {address}.")

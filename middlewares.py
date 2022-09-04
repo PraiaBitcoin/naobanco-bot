@@ -1,11 +1,13 @@
 from database import db
-from fastapi import Request
 from tinydb import Query
 
 def checkIfExistWallet(func: object):
     def wrapper(data: object):
-        if db.get(Query().id == data.from_user.id):
+        user_id = data.from_user.id
+        wallet = db.get(Query().id == user_id)
+        if (wallet != None):
+            username = data.from_user.username
+            if (wallet["username"] != username):
+                db.update({"username": username}, Query().id == user_id)
             return func(data)
-        else:
-            return
     return wrapper

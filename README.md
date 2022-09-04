@@ -3,6 +3,6 @@
 ## Resources:
 
 - [x] Import Lnbits wallet via QRCODE
+- [x] Basic wallet resources (Balance, Transactions, Receive, Pay)
 - [ ] Lightning Address support
-- [ ] Basic wallet resources (Balance, Transactions, Receive, Pay)
 - [ ] Watch Only Bitcoin Address (Onchain)

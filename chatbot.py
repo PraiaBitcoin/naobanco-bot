@@ -3,7 +3,6 @@ from middlewares import checkIfExistWallet
 from lib.rate import get_price_bitcoin_in_brl
 
 from database import db
-from fastapi import APIRouter
 from configs import PUBLIC_URL_ENDPOINT, TELEGRAM_API_TOKEN
 from telebot import TeleBot
 
@@ -11,6 +10,7 @@ from tinydb import Query
 from lnbits import Lnbits
 from qrcode import make as MakeQR
 
+from time import time
 from json import dumps, loads
 from cv2 import QRCodeDetector, imread
 
@@ -19,6 +19,7 @@ from re import search
 from os import remove
 
 import requests
+import timeago
 import locale
 
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
@@ -71,7 +72,7 @@ def balance(data: object):
     balance_in_brl = balance_in_sat * get_price_btc_in_brl
 
     message = "<b>Saldos disponíveis:</b>\n\n"
-    message+= f"<b>BTC:</b> {balance_in_sat}\n"
+    message+= f"<b>BTC:</b> {locale.currency(balance_in_sat, symbol=None)}\n"
     message+= f"<b>BRL:</b> {locale.currency(balance_in_brl, symbol=None)}"
     return bot.reply_to(data, message)
 
@@ -148,3 +149,32 @@ def pay(data: object):
             return bot.reply_to(data, f"Não foi possível pagar {address}.")
         else:
             return bot.reply_to(data, f"{amount} sats foi pagao {address}.")
+
+@bot.message_handler(commands=["transactions", "extrato", "txs", "transacoes"])
+@checkIfExistWallet
+def transactions(data: object):
+    wallet = db.get(Query().id == data.from_user.id)
+    lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+
+    timestamp = time()
+    message = "<b>Transações:</b>\n"
+    count = 0
+    for tx in lnbits.list_payments(limit=5):
+        if (count >= 5):
+            break
+            
+        if (tx["pending"] == False):
+            continue
+
+        count += 1
+        settled_at = int(tx["time"])
+        amount_sat = int(tx["amount"] / 1000)
+        
+        amount_sat_format = locale.currency(amount_sat, symbol=None)
+        if (amount_sat > 0):
+            amount_sat_format = f"+{amount_sat_format}"
+        
+        settled_at_format = timeago.format(settled_at, timestamp, locale='pt_BR')
+        message += f"<i>{amount_sat_format} sats {settled_at_format}</i>\n"
+    
+    return bot.reply_to(data, message)

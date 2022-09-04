@@ -1,4 +1,4 @@
-# Lnbits Chatbot
+# Boltcard Chatbot
 
 A simple telegram wallet to use with boltcard.
 

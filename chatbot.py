@@ -163,9 +163,9 @@ def transactions(data: object):
         if (count >= 5):
             break
             
-        if (tx["pending"] == False):
+        if (tx["pending"] == True):
             continue
-
+        
         count += 1
         settled_at = int(tx["time"])
         amount_sat = int(tx["amount"] / 1000)

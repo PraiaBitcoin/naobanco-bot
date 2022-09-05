@@ -7,7 +7,7 @@ A simple telegram wallet to use with boltcard.
 - [x] Import Lnbits wallet via QRCode
 - [x] Basic wallet resources (Balance, Transactions, Receive, Pay)
 - [x] Lightning Address support
-- [ ] Watch Only Bitcoin Address (Onchain)
+- [x] Watch Only Bitcoin Address (Onchain)
 
 ## Setup:
 

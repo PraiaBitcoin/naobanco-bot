@@ -1,14 +1,14 @@
-from audioop import add
 from services.redis import redis
 from embit.networks import NETWORKS
 from embit.script import p2wpkh
 from embit.bip32 import HDKey
 from middlewares import checkIfExistWallet
+from binascii import unhexlify
 
 from lib.rate import get_price_bitcoin_in_brl
 from database import db
 from bitcoin import Bitcoin
-from configs import BTC_HOST, BTC_NETWORK, BTC_PASS, BTC_USER, LNBITS_DEFAULT_URL, PUBLIC_URL_ENDPOINT, TELEGRAM_API_TOKEN
+from configs import BTC_HOST, BTC_NETWORK, BTC_PASS, BTC_USER, LNBITS_DEFAULT_URL, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY, TELEGRAM_API_TOKEN, RSA_PUB_KEY
 from telebot import TeleBot
 
 from tinydb import Query
@@ -25,7 +25,9 @@ from os import remove
 
 import requests
 import timeago
+
 import locale
+import rsa
 
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
@@ -52,8 +54,11 @@ def load_qrcode(data: object):
     if (qr[0] == None):
         return bot.reply_to(data, "Não foi possível ler o QRCode.")
     else:
-        qr = qr[0].replace("\n", "")
+        qr = qr[0].replace("\n", "").strip()
 
+    if not (qr):
+        return bot.reply_to(data, "Não foi possível ler o QRCode.")
+    
     # Delete temporary image.
     remove(f"data/{file_name}")
 
@@ -61,27 +66,37 @@ def load_qrcode(data: object):
     username = data.from_user.username
     if ("wallet?usr" in qr):
         wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
+        wallet["adminkey"] = rsa.encrypt(wallet["adminkey"].encode(), RSA_PUB_KEY).hex()
+
         api = qr.split("/wallet")[0] + "/api"
         if not db.get(Query().id == user_id):
             db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
         else:
             db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
-        return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
+        
+        message = "Sua carteira %s foi importada com sucesso." % (wallet["id"])
+        message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
+        return bot.reply_to(data, message)
 
     elif ("admin_key" in qr) or ("invoice_key" in qr):
-        qr = qr.replace("admin_key", "").replace("invoice_key", "")
-
         if not db.get(Query().id == user_id):
             if ("admin_key" in qr):
+                qr = rsa.encrypt(qr.replace("admin_key:", "").encode(), RSA_PUB_KEY).hex()
                 db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": qr, "invoice_key": None})
             else:
+                qr = qr.replace("invoice_key:", "")
                 db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": None, "invoice_key": qr})
         else:
             if ("admin_key" in qr):
+                qr = rsa.encrypt(qr.replace("admin_key:", "").encode(), RSA_PUB_KEY).hex()
                 db.update({"username": username, "admin_key": qr}, Query().id == user_id)
             else:
+                qr = qr.replace("invoice_key:", "")
                 db.update({"username": username, "invoice_key": qr}, Query().id == user_id)
-        return bot.reply_to(data, "Sua carteira foi importada com sucesso.")
+
+        message = "Sua carteira foi importada com sucesso."
+        message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
+        return bot.reply_to(data, message)
 
     elif (qr[1:4].upper() in ["PUB"]):
         try:
@@ -98,7 +113,10 @@ def load_qrcode(data: object):
             db.insert({"id": user_id, "zpub": qr, "path": 0})
         else:
             db.update({"zpub": qr, "path": 0}, Query().id == user_id)
-        return bot.reply_to(data, "Sua carteira de visualização foi importado com sucesso.")
+        
+        message = "Sua carteira de visualização foi importado com sucesso."
+        message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
+        return bot.reply_to(data, message)
     
 @bot.message_handler(commands=["me"])
 @checkIfExistWallet
@@ -111,6 +129,10 @@ def me(data: object):
 @checkIfExistWallet
 def balance(data: object):
     wallet = db.get(Query().id == data.from_user.id)
+    if (wallet["admin_key"] != None):
+        wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+    
+    print(wallet["admin_key"])
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     get_price_btc_in_brl = get_price_bitcoin_in_brl()["bid"]
@@ -130,6 +152,9 @@ def balance(data: object):
 @checkIfExistWallet
 def receive(data: object):
     wallet = db.get(Query().id == data.from_user.id)
+    if (wallet["admin_key"] != None):
+        wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+    
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     amount = int(data.text.split()[-1])
@@ -164,7 +189,8 @@ def pay(data: object):
     from_wallet = db.get((Query().id == data.from_user.id) & (Query().admin_key != None))
     if (from_wallet == None):
         return bot.reply_to(data, "Sua carteira é apenas de visualização, não é possível acessar este recurso.")
-    
+
+    from_wallet["admin_key"] = rsa.decrypt(unhexlify(from_wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
     from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
     if ("lnbc" in address):
         pay_invoice = from_lnbits.pay_invoice(address)
@@ -212,6 +238,9 @@ def pay(data: object):
 @checkIfExistWallet
 def transactions(data: object):
     wallet = db.get(Query().id == data.from_user.id)
+    if (wallet["admin_key"] != None):
+        wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+    
     lnbits = Lnbits(wallet.get("admin_key"), wallet.get("invoice_key"), url=wallet.get("api"))
 
     timestamp = time()

@@ -1,14 +1,14 @@
+from audioop import add
+from services.redis import redis
 from embit.networks import NETWORKS
 from embit.script import p2wpkh
 from embit.bip32 import HDKey
-
-from services.bitcoin import bitcoin
-from services.redis import redis
 from middlewares import checkIfExistWallet
-from lib.rate import get_price_bitcoin_in_brl
 
+from lib.rate import get_price_bitcoin_in_brl
 from database import db
-from configs import PUBLIC_URL_ENDPOINT, TELEGRAM_API_TOKEN
+from bitcoin import Bitcoin
+from configs import BTC_HOST, BTC_NETWORK, BTC_PASS, BTC_USER, LNBITS_DEFAULT_URL, PUBLIC_URL_ENDPOINT, TELEGRAM_API_TOKEN
 from telebot import TeleBot
 
 from tinydb import Query
@@ -29,22 +29,30 @@ import locale
 
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
+bitcoin = Bitcoin(BTC_HOST)
+bitcoin.auth(BTC_USER, BTC_PASS)
+
 bot = TeleBot(TELEGRAM_API_TOKEN, parse_mode="HTML")
 
-@bot.message_handler(content_types=["photo"])
-def load_qrcode(data: object):
-    file_name = data.photo[-1].file_id
+@bot.message_handler(content_types=["photo", "document"])
+def load_qrcode(data: object):    
+    if (data.content_type == "photo"):
+        file_name = data.photo[-1].file_id
+
+    if (data.content_type == "document"):
+        file_name = data.document.file_id
+
     file_path = bot.get_file(file_name).file_path
     file_data = bot.download_file(file_path)
     with open(f"data/{file_name}", "wb") as w:
         w.write(file_data)
-    
+
     # Detect QRCODE using opencv library.
     qr = list(QRCodeDetector().detectAndDecode(imread(f"data/{file_name}")))
-    if not (qr[0]):
-        return bot.reply_to(data, "Não foi possível ler o QRCODE.")
+    if (qr[0] == None):
+        return bot.reply_to(data, "Não foi possível ler o QRCode.")
     else:
-        qr = qr[0]
+        qr = qr[0].replace("\n", "")
 
     # Delete temporary image.
     remove(f"data/{file_name}")
@@ -55,28 +63,42 @@ def load_qrcode(data: object):
         wallet = loads(search(r"window\.wallet = ({.*});", requests.get(qr).text).group(1))
         api = qr.split("/wallet")[0] + "/api"
         if not db.get(Query().id == user_id):
-            db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"})
+            db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
         else:
-            db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"], "type": "full-acess"}, Query().id == user_id)
+            db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
         return bot.reply_to(data, "Sua carteira %s foi importada com sucesso." % (wallet["id"]))
-    
-    elif (qr[:4].upper() in ["ZPUB"]):
+
+    elif ("admin_key" in qr) or ("invoice_key" in qr):
+        qr = qr.replace("admin_key", "").replace("invoice_key", "")
+
+        if not db.get(Query().id == user_id):
+            if ("admin_key" in qr):
+                db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": qr, "invoice_key": None})
+            else:
+                db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": None, "invoice_key": qr})
+        else:
+            if ("admin_key" in qr):
+                db.update({"username": username, "admin_key": qr}, Query().id == user_id)
+            else:
+                db.update({"username": username, "invoice_key": qr}, Query().id == user_id)
+        return bot.reply_to(data, "Sua carteira foi importada com sucesso.")
+
+    elif (qr[1:4].upper() in ["PUB"]):
         try:
             zpub = HDKey.from_string(qr)
-            zpub.version = NETWORKS["main"]["zpub"]
+            zpub.version = NETWORKS[BTC_NETWORK]["zpub"]
         except:
-            return bot.reply_to(data, "Não foi possível importar sua carteira de apenas visualização.")
+            return bot.reply_to(data, "Não foi possível importar á carteira de visualização.")
         
         for path in range(0, 20):
-            address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS["main"])
-            bitcoin.importaddress(address)
+            address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS[BTC_NETWORK])
             redis.set(address, dumps({"id": user_id}))
         
         if not db.get(Query().id == user_id):
             db.insert({"id": user_id, "zpub": qr, "path": 0})
         else:
             db.update({"zpub": qr, "path": 0}, Query().id == user_id)
-        return bot.reply_to(data, "Sua carteira de apenas visualização foi importado com sucesso.")
+        return bot.reply_to(data, "Sua carteira de visualização foi importado com sucesso.")
     
 @bot.message_handler(commands=["me"])
 @checkIfExistWallet
@@ -94,12 +116,14 @@ def balance(data: object):
     get_price_btc_in_brl = get_price_bitcoin_in_brl()["bid"]
 
     # Get bitcoin balance from wallet.
-    balance_in_sat = lnbits.get_wallet()["balance"]
-    balance_in_brl = balance_in_sat * get_price_btc_in_brl
+    balance = lnbits.get_wallet()
 
-    message = "<b>Saldos disponíveis:</b>\n\n"
-    message+= f"<b>BTC:</b> {locale.currency(balance_in_sat, symbol=None)}\n"
-    message+= f"<b>BRL:</b> {locale.currency(balance_in_brl, symbol=None)}"
+    balance_in_sat = round(balance["balance"] / 1000)
+    balance_in_btc = balance_in_sat / pow(10, 8)
+    balance_in_brl = balance_in_btc * get_price_btc_in_brl
+
+    message = "<b>Saldo disponível:</b> "
+    message+= f"{balance_in_sat} sats (~ R$ {locale.currency(balance_in_brl, symbol=None)})\n"
     return bot.reply_to(data, message)
 
 @bot.message_handler(commands=["receive", "receber", "invoice"], regexp="/receber|/receive|/invoice [0-9]")
@@ -109,7 +133,8 @@ def receive(data: object):
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     amount = int(data.text.split()[-1])
-    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT)
+    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
+
     payment_hash = invoice["payment_hash"]
     payment_request = invoice["payment_request"]
     
@@ -118,6 +143,7 @@ def receive(data: object):
 
     create_qrcode = MakeQR(f"lightning:{payment_request}")
     qrcode_bytes = BytesIO()
+
     create_qrcode.save(qrcode_bytes)
     qrcode_bytes.seek(0)
 
@@ -135,8 +161,8 @@ def pay(data: object):
     
     address = command[-1]
 
-    from_wallet = db.get(Query().id == data.from_user.id)
-    if (from_wallet["type"] != "full-acess"):
+    from_wallet = db.get((Query().id == data.from_user.id) & (Query().admin_key != None))
+    if (from_wallet == None):
         return bot.reply_to(data, "Sua carteira é apenas de visualização, não é possível acessar este recurso.")
     
     from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
@@ -147,28 +173,31 @@ def pay(data: object):
             return bot.reply_to(data, "Não foi possível pagar á fatura.")
         else:
             decode_invoice = from_lnbits.decode_invoice(address)
-            amount = round(decode_invoice.get("amount") / 1000)
+            amount = round(decode_invoice.get("amount_msat") / 1000)
             return bot.reply_to(data, f"Fatura <code>{payment_hash}</code> de {amount} sats paga.")
     
     elif (address[0] == "@") and (amount != None):
         to_wallet = db.get(Query().username == address[1:])
+        if (to_wallet == None) or (to_wallet["id"] == from_wallet["id"]):
+            return bot.reply_to(data, "Não foi possível pagar á fatura.")
+        
         to_lnbits = Lnbits(to_wallet["admin_key"], to_wallet["invoice_key"], url=to_wallet["api"])
 
         # Generate lightning invoice.
-        invoice = to_lnbits.create_invoice(amount)["payment_request"]
-    
+        invoice = to_lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")["payment_request"]
+
         pay_invoice = from_lnbits.pay_invoice(invoice)
         payment_hash = pay_invoice.get("payment_hash")
         if (payment_hash == None):
             return bot.reply_to(data, f"Não foi possível pagar {address}.")
         else:
-            return bot.reply_to(data, f"{amount} sats foi pagao {address}.")
+            return bot.reply_to(data, f"{amount} sats foi pago {address}.")
     
     elif ("@" in address) and (amount != None):
-        username, service = address.split("@")[-1]
+        username, service = address.split("@")
         try:
             callback = requests.get(f"http://{service}/.well-known/lnurlp/{username}").json()["callback"]   
-            invoice = requests.get(callback, params={"amount": amount}).json()["pr"]
+            invoice = requests.get(callback, params={"amount": amount * 1000}).json()["pr"]
         except:
             return bot.reply_to(data, "Não foi possível identificar o Lightning Address.")
         
@@ -183,7 +212,7 @@ def pay(data: object):
 @checkIfExistWallet
 def transactions(data: object):
     wallet = db.get(Query().id == data.from_user.id)
-    lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+    lnbits = Lnbits(wallet.get("admin_key"), wallet.get("invoice_key"), url=wallet.get("api"))
 
     timestamp = time()
     message = "<b>Transações:</b>\n"
@@ -217,18 +246,19 @@ def onchain(data: object):
         return bot.reply_to(data, "Você precisa importar sua carteira de visualização primeiro, para gerar uma carteira onchain.") 
     
     zpub = HDKey.from_string(wallet["zpub"])
-    zpub.version = NETWORKS["main"]["zpub"]
+    zpub.version = NETWORKS[BTC_NETWORK]["zpub"]
     path = wallet["path"]
 
-    address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS["main"])
+    address = p2wpkh(zpub.derive(f"m/0/{path}").key).address(NETWORKS[BTC_NETWORK])
     if (redis.get(address) == None):
         redis.set(address, dumps({"id": user_id}))
+        bitcoin.importaddress(address)
 
     create_qrcode = MakeQR(f"bitcoin:{address}")
     qrcode_bytes = BytesIO()
 
     create_qrcode.save(qrcode_bytes)
     qrcode_bytes.seek(0)
-    
-    caption = f"Você pode receber bitcoins usando endereço <code>{address}</code>"
+
+    caption = f"Você pode receber bitcoins usando endereço <code>{address}</code>."
     return bot.send_photo(user_id, qrcode_bytes, caption=caption)

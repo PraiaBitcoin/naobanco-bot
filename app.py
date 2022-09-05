@@ -1,4 +1,6 @@
 from services.redis import redis
+from threading import Thread
+from services import bitcoin
 from chatbot import bot
 
 from database import db 
@@ -36,12 +38,13 @@ async def lnurl_pay_create_invoice(username: str, amount: int = 1000):
     if (amount < 1000):
         return {"status":"ERROR", "reason": "The minimum amount is 1 sat."}
 
+    amount = round(amount / 1000)
     wallet = db.get(Query().username == username)
     if (wallet == None):
         return {"status":"ERROR", "reason": "Username does not exist."}
 
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
-    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT)
+    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
     payment_hash = invoice["payment_hash"]
     payment_request = invoice["payment_request"]
     
@@ -88,4 +91,16 @@ bot.remove_webhook()
 bot.set_webhook(url=PUBLIC_URL_ENDPOINT  + f"/api/webhook/telegram/{WEBHOOK_TELEGRAM_TOKEN}")
 
 def start():
-    uvicorn.run(api, host=API_HOST, port=API_PORT)
+    threads = []
+
+    thread = Thread(target=lambda: uvicorn.run(api, host=API_HOST, port=API_PORT))
+    thread.start()
+    threads.append(thread)
+    
+    thread = Thread(target=bitcoin.start)
+    thread.start()
+    threads.append(thread)
+
+    for t in threads:
+        t.join()
+    

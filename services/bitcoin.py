@@ -1,15 +1,17 @@
 from services.redis import redis
+from database import db 
 from chatbot import bot
 from bitcoin import Bitcoin
 from configs import BTC_HOST, BTC_PASS, BTC_USER, BTC_ZMQ_TX
+from tinydb import Query
 from json import loads
 
 import zmq 
 
-bitcoin = Bitcoin(BTC_HOST)
-bitcoin.auth(BTC_USER, BTC_PASS)
-
 def start():
+    bitcoin = Bitcoin(BTC_HOST)
+    bitcoin.auth(BTC_USER, BTC_PASS)
+
     context = zmq.Context()
 
     subscribe = context.socket(zmq.SUB)
@@ -27,17 +29,19 @@ def start():
             continue
         
         # List last transactions.
-        transactions = bitcoin.listtransactions()
-
+        transactions = bitcoin.listtransactions(count=20)
+        if not (transactions):
+            continue
+        
         # Search for the transaction in the last transactions list.
         transaction = list(filter(lambda tx: 
             (tx["txid"] == txid) and \
                 (tx["category"] == "receive") and \
-                    (tx["confirmations"] >= 1) and \
-                        (tx["involvesWatchonly"] == True) and \
-                            (tx["amount"] >= 1e-05), transactions))
+                        (tx.get("involvesWatchonly") == True) and \
+                            (tx["amount"] >= 1e-05) and \
+                                (tx["confirmations"] == 0), transactions))
         if not (transaction):
-            continue            
+            continue
         else:
             transaction = transaction[0]
         
@@ -45,7 +49,9 @@ def start():
         if not (user):
             continue
         else:
-            user = loads(user)["id"]
+            user_id = int(loads(user)["id"])
+            user = db.get(Query().id == user_id)
         
+        db.update({"path": user["path"] + 1}, Query().id == user_id)        
         amount = round(transaction["amount"] * pow(10, 8))
-        bot.send_message(user, f"Você recebeu {amount} sats.")
+        bot.send_message(user_id, f"Você recebeu {amount} sats.")

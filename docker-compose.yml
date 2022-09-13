@@ -20,16 +20,18 @@ services:
       - 4040:4040
     command:
       - http
-      - fx.nginx
-      - --config=/home/ngrok/.config/ngrok/ngrok.yml
+      - boltcard.chatbot
+      - --config=/etc/ngrok.yml
     volumes:
-      - ./data/ngrok:/home/ngrok/.config/ngrok
-
+      - ./data/ngrok/ngrok.yaml:/etc/ngrok.yml
+  
   boltcard-chatbot:
     image: boltcard-chatbot
     container_name: boltcard.chatbot
     volumes:
       - ./:/app
     environment:
+      - NGROK_ACTIVE=true
       - NGROK_WEB_INTERFACE=http://boltcard.ngrok:4040
-  
+    depends_on:
+      - ngrok

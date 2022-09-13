@@ -6,10 +6,10 @@ import rsa
 
 # API configuration.
 API_HOST = environ.get("API_HOST", "0.0.0.0")
-API_PORT = int(environ.get("API_PORT", 9651))
+API_PORT = int(environ.get("API_PORT", 80))
 
 # Telegram configuration.
-TELEGRAM_API_TOKEN = environ["TELEGRAM_API_TOKEN"]
+TELEGRAM_API_TOKEN = environ.get("TELEGRAM_API_TOKEN")
 
 # Redis configuration.
 REDIS_HOST = environ.get("REDIS_HOST", "localhost")

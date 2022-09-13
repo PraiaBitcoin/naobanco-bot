@@ -12,3 +12,24 @@ services:
       - 6379:6379
     volumes:
       - ./data/redis:/data
+  
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: boltcard.ngrok
+    ports:
+      - 4040:4040
+    command:
+      - http
+      - fx.nginx
+      - --config=/home/ngrok/.config/ngrok/ngrok.yml
+    volumes:
+      - ./data/ngrok:/home/ngrok/.config/ngrok
+
+  boltcard-chatbot:
+    image: boltcard-chatbot
+    container_name: boltcard.chatbot
+    volumes:
+      - ./:/app
+    environment:
+      - NGROK_WEB_INTERFACE=http://boltcard.ngrok:4040
+  

@@ -12,7 +12,8 @@ services:
       - 6379:6379
     volumes:
       - ./data/redis:/data
-  
+    restart: always
+
   ngrok:
     image: ngrok/ngrok:latest
     container_name: boltcard.ngrok
@@ -24,7 +25,8 @@ services:
       - --config=/etc/ngrok.yml
     volumes:
       - ./data/ngrok/ngrok.yaml:/etc/ngrok.yml
-  
+    restart: always
+
   boltcard-chatbot:
     image: boltcard-chatbot
     container_name: boltcard.chatbot
@@ -35,3 +37,4 @@ services:
       - NGROK_WEB_INTERFACE=http://boltcard.ngrok:4040
     depends_on:
       - ngrok
+    restart: always

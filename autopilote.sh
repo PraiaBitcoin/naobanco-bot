@@ -62,3 +62,5 @@ if [[ ! -z "$NGROK_TOKEN" ]]; then
     ngrok+="authtoken: \"${NGROK_TOKEN}\""
     echo -e $ngrok > ./data/ngrok/ngrok.yaml
 fi
+
+echo - "\nUse ./start.sh to start the program."

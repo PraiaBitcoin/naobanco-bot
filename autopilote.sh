@@ -28,10 +28,10 @@ read -p "BTC_ZMQ_TX: " BTC_ZMQ_TX
 echo -e "\n[STEP 3] Get the URL of the lnbits service that you will default to."
 read -p "LNBITS_DEFAULT_URL: " LNBITS_DEFAULT_URL
 
-echo -e "[STEP 4] Get the domain you will use for ChatBot."
+echo -e "\n[STEP 4] Get the domain you will use for ChatBot."
 read -p "PUBLIC_URL_ENDPOINT: " PUBLIC_URL_ENDPOINT
 
-echo -e "[STEP 5] Create an account at https://ngrok.com/ and get the access token."
+echo -e "\n[STEP 5] Create an account at https://ngrok.com/ and get the access token."
 read -p "NGROK_TOKEN: " NGROK_TOKEN
 
 if [ !LNBITS_DEFAULT_URL ]; then
@@ -45,16 +45,16 @@ environment+="BTC_HOST=${BTC_HOST}\n"
 environment+="BTC_USER=${BTC_USER}\n"
 environment+="BTC_PASS=${BTC_PASS}\n"
 environment+="BTC_PASS=${BTC_ZMQ_TX}\n"
-environment+="LNBITS_DEFAULT_URL=${LNBITS_DEFAULT_URL}\n"
+environment+="LNBITS_DEFAULT_URL=${LNBITS_DEFAULT_URL}"
 
-if [ PUBLIC_URL_ENDPOINT ]; then
-    environment+="PUBLIC_URL_ENDPOINT=${PUBLIC_URL_ENDPOINT}\n"
+if [[ ! -z "$PUBLIC_URL_ENDPOINT" ]] ; then
+    environment+="\nPUBLIC_URL_ENDPOINT=${PUBLIC_URL_ENDPOINT}\n"
     environment+="NGROK_ACTIVE=false"
 fi
 
 echo -e $environment > .env
 
-if [ NGROK_TOKEN ]; then 
+if [[ ! -z "$NGROK_TOKEN" ]]; then 
     ngrok="version: 2\n"
     ngrok+="authtoken: \"${NGROK_TOKEN}\""
     echo -e $ngrok > ./data/ngrok/ngrok.yaml

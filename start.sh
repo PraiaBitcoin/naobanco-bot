@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker-compose --env-file .env up --remove-orphans
+docker-compose --env-file .env up -d --remove-orphans

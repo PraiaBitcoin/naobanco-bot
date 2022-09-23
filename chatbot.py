@@ -73,30 +73,47 @@ def load_qrcode(data: object):
             db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
         else:
             db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
-        
-        message = "Sua carteira %s foi importada com sucesso." % (wallet["id"])
-        message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
-        return bot.reply_to(data, message)
+
+        try:
+            balance = Lnbits(wallet["adminkey"], wallet["inkey"], url=api).get_wallet()
+            if (balance.get("detail") != None):
+                raise Exception(balance["detail"])
+            
+            message = "Sua carteira %s foi importada com sucesso." % (wallet["id"])
+            message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
+            return bot.reply_to(data, message)
+        except:
+            return bot.reply_to(data, "Sua carteira invalida.")
 
     elif ("admin_key" in qr) or ("invoice_key" in qr):
+        invoice_key = None
+        admin_key = None
         if not db.get(Query().id == user_id):
             if ("admin_key" in qr):
-                qr = rsa.encrypt(qr.replace("admin_key:", "").encode(), RSA_PUB_KEY).hex()
+                admin_key = qr.replace("admin_key:", "")
+                qr = rsa.encrypt(admin_key.encode(), RSA_PUB_KEY).hex()
                 db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": qr, "invoice_key": None})
             else:
                 qr = qr.replace("invoice_key:", "")
                 db.insert({"id": user_id, "api": LNBITS_DEFAULT_URL, "username": username, "admin_key": None, "invoice_key": qr})
         else:
             if ("admin_key" in qr):
-                qr = rsa.encrypt(qr.replace("admin_key:", "").encode(), RSA_PUB_KEY).hex()
+                admin_key = qr.replace("admin_key:", "") 
+                qr = rsa.encrypt(admin_key.encode(), RSA_PUB_KEY).hex()
                 db.update({"username": username, "admin_key": qr}, Query().id == user_id)
             else:
-                qr = qr.replace("invoice_key:", "")
-                db.update({"username": username, "invoice_key": qr}, Query().id == user_id)
-
-        message = "Sua carteira foi importada com sucesso."
-        message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
-        return bot.reply_to(data, message)
+                invoice_key = qr.replace("invoice_key:", "")
+                db.update({"username": username, "invoice_key": invoice_key}, Query().id == user_id)
+        try:
+            balance = Lnbits(admin_key, invoice_key, url=LNBITS_DEFAULT_URL).get_wallet()
+            if (balance.get("detail") != None):
+                raise Exception(balance["detail"])
+            
+            message = "Sua carteira foi importada com sucesso."
+            message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
+            return bot.reply_to(data, message)
+        except:
+            return bot.reply_to(data, "Sua carteira invalida.")
 
     elif (qr[1:4].upper() in ["PUB"]):
         try:
@@ -117,8 +134,10 @@ def load_qrcode(data: object):
         message = "Sua carteira de visualização foi importado com sucesso."
         message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
         return bot.reply_to(data, message)
-    
-@bot.message_handler(commands=["me"])
+    else:
+        return bot.reply_to("QRCode invalido.")
+
+@bot.message_handler(commands=["conta", "account"])
 @checkIfExistWallet
 def me(data: object):
     address = data.from_user.username + "@" + PUBLIC_URL_ENDPOINT.split("//")[-1].replace("/", "")
@@ -132,7 +151,6 @@ def balance(data: object):
     if (wallet["admin_key"] != None):
         wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
     
-    print(wallet["admin_key"])
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
 
     get_price_btc_in_brl = get_price_bitcoin_in_brl()["bid"]

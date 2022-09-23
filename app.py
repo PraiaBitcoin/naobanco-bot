@@ -1,10 +1,11 @@
 from services.redis import redis
 from threading import Thread
+from binascii import unhexlify
 from services import bitcoin
 from chatbot import bot
 
 from database import db 
-from configs import API_HOST, API_PORT, PUBLIC_URL_ENDPOINT
+from configs import API_HOST, API_PORT, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY
 
 from fastapi import FastAPI, Body, HTTPException, Request
 from tinydb import Query
@@ -15,6 +16,8 @@ from json import dumps, loads
 
 import uvicorn
 import telebot
+
+import rsa
 
 # Generate random key to make it difficult
 # for an attacker to find the webhook point.
@@ -31,10 +34,10 @@ async def lightning_address(username: str, request: Request = Request):
     callback = f"{request.base_url}lnurl/pay/{username}"
     minSendable = 1 * 1000
     maxSendable = 100000000 * 1000
-    return {"callback": callback, "minSendable": minSendable, "maxSendable": maxSendable, "tag": "payRequest"}
+    return {"status":"OK", "commentAllowed": 255, "callback": callback, "minSendable": minSendable, "maxSendable": maxSendable, "tag": "payRequest"}
 
 @api.get("/lnurl/pay/{username}")
-async def lnurl_pay_create_invoice(username: str, amount: int = 1000):
+def lnurl_pay_create_invoice(username: str, amount: int = 1000, comment: str = ""):
     if (amount < 1000):
         return {"status":"ERROR", "reason": "The minimum amount is 1 sat."}
 
@@ -42,15 +45,19 @@ async def lnurl_pay_create_invoice(username: str, amount: int = 1000):
     wallet = db.get(Query().username == username)
     if (wallet == None):
         return {"status":"ERROR", "reason": "Username does not exist."}
-
+    
+    if (wallet["admin_key"] != None):
+        wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+    
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
-    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
+    invoice = lnbits.create_invoice(amount, comment, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
+    
     payment_hash = invoice["payment_hash"]
     payment_request = invoice["payment_request"]
     
     redis.set(f"invoice.{payment_hash}", dumps({"id": wallet["id"]}))
     redis.expire(f"invoice.{payment_hash}", 86400)
-    return {"pr": payment_request}
+    return {"status": "OK", "routes": [], "pr": payment_request}
 
 @api.post("/api/webhook/lnbits")
 def lnbits_webhook(payload: dict = Body(...)):

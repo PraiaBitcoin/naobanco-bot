@@ -6,6 +6,13 @@ if [[ ! $(docker images -q boltcard-chatbot:latest 2> /dev/null) ]] ; then
     docker build . -t boltcard-chatbot
 fi
 
+mkdir -p ./data/certs
+if [ ! "$(ls -A ./data/certs 2> /dev/null)" ]; then
+    openssl req -newkey rsa:2048 -sha256 -nodes -keyout ./data/certs/ssl.key -x509 -days 365 -out ./data/certs/ssl.pem -subj "/C=US/ST=New York/L=Brooklyn/O=Example Brooklyn Company/CN=YOURDOMAIN.EXAMPLE"
+fi
+
+clear 
+
 cat << "EOF" 
    ##     ##   ##  ######    #####   ######    ####    ####      #####   ######   #######
   ####    ##   ##  # ## #   ##   ##   ##  ##    ##      ##      ##   ##  # ## #    ##   #

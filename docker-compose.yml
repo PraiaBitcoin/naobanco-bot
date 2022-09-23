@@ -21,20 +21,22 @@ services:
       - 4040:4040
     command:
       - http
-      - boltcard.chatbot
+      - boltcard_chatbot
       - --config=/etc/ngrok.yml
     volumes:
       - ./data/ngrok/ngrok.yaml:/etc/ngrok.yml
     restart: always
 
-  boltcard-chatbot:
-    image: boltcard-chatbot
+  boltcard_chatbot:
+    image: boltcard-chatbot:latest
     container_name: boltcard.chatbot
+    ports:
+      - 80:7531
     volumes:
       - ./:/app
     environment:
-      - NGROK_ACTIVE=true
-      - NGROK_WEB_INTERFACE=http://boltcard.ngrok:4040
+      - NGROK_ACTIVE=${NGROK_ACTIVE}
+      - NGROK_WEB_INTERFACE=http://ngrok:4040
     depends_on:
       - ngrok
     restart: always

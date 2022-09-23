@@ -62,3 +62,6 @@ if (RSA_PUB_KEY == None) and (RSA_PRIVATE_KEY == None):
 if (type(RSA_PRIVATE_KEY) == bytes) and (type(RSA_PUB_KEY) == bytes):
     RSA_PUB_KEY = rsa.PublicKey.load_pkcs1(RSA_PUB_KEY)
     RSA_PRIVATE_KEY = rsa.PrivateKey.load_pkcs1(RSA_PRIVATE_KEY)
+
+SSL_PRIV_KEY = environ.get("SSL_PRIV_KEY", "./data/certs/priv.key")
+SSL_PUB_KEY = environ.get("SSL_PUB_KEY", "./data/certs/pub.pem")

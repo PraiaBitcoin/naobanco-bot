@@ -29,11 +29,10 @@ listen=1
 ```
 
 ```bash
-git clone https://github.com/leffw/lnbits-chatbot
-cd ./lnbits-chatbot
-
-chmod +x autopilote.sh start.sh
-sleep 1
-./autopilote.sh
-./start.sh
+$ git clone https://github.com/leffw/lnbits-chatbot
+$ cd ./lnbits-chatbot
+$ chmod +x autopilote.sh 
+$ chmod +x start.sh
+$ ./autopilote.sh
+$ ./start.sh
 ```

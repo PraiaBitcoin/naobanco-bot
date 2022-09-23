@@ -5,7 +5,7 @@ from services import bitcoin
 from chatbot import bot
 
 from database import db 
-from configs import API_HOST, API_PORT, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY
+from configs import API_HOST, API_PORT, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY, SSL_PRIV_KEY, SSL_PUB_KEY
 
 from fastapi import FastAPI, Body, HTTPException, Request
 from tinydb import Query
@@ -25,8 +25,11 @@ WEBHOOK_TELEGRAM_TOKEN = token_hex(64)
 
 api = FastAPI(docs_url=None, redoc_url=None)
 
-@api.post(f"/api/webhook/telegram/{WEBHOOK_TELEGRAM_TOKEN}")
-async def telegram_webhook(payload: dict = Body(...)):
+@api.post(f"/api/webhook/telegram")
+async def telegram_webhook(payload: dict = Body(...), request: Request = Request):
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_TELEGRAM_TOKEN:
+        raise HTTPException(401)
+    
     bot.process_new_updates([telebot.types.Update.de_json(payload)])
 
 @api.get("/.well-known/lnurlp/{username}")
@@ -37,7 +40,7 @@ async def lightning_address(username: str, request: Request = Request):
     return {"status":"OK", "commentAllowed": 255, "callback": callback, "minSendable": minSendable, "maxSendable": maxSendable, "tag": "payRequest"}
 
 @api.get("/lnurl/pay/{username}")
-def lnurl_pay_create_invoice(username: str, amount: int = 1000, comment: str = ""):
+async def lnurl_pay_create_invoice(username: str, amount: int = 1000, comment: str = ""):
     if (amount < 1000):
         return {"status":"ERROR", "reason": "The minimum amount is 1 sat."}
 
@@ -97,13 +100,13 @@ def lnbits_webhook(payload: dict = Body(...)):
 def start():
     threads = []
 
-    thread = Thread(target=lambda: uvicorn.run(api, host=API_HOST, port=API_PORT))
+    thread = Thread(target=lambda: uvicorn.run(api, host=API_HOST, port=API_PORT,  ssl_certfile=SSL_PUB_KEY, ssl_keyfile=SSL_PRIV_KEY))
     thread.start()
     threads.append(thread)
 
     try:
         bot.remove_webhook()
-        bot.set_webhook(url=PUBLIC_URL_ENDPOINT  + f"/api/webhook/telegram/{WEBHOOK_TELEGRAM_TOKEN}")
+        bot.set_webhook(url=f"{PUBLIC_URL_ENDPOINT}/api/webhook/telegram/", secret_token=WEBHOOK_TELEGRAM_TOKEN, certificate=SSL_PUB_KEY)
     except:
         thread = Thread(target=lambda : bot.polling(skip_pending=True))
         thread.start()

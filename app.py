@@ -93,10 +93,6 @@ def start():
     thread = Thread(target=lambda: uvicorn.run(api, host=API_HOST, port=API_PORT))
     thread.start()
     threads.append(thread)
-    
-    thread = Thread(target=bitcoin.start)
-    thread.start()
-    threads.append(thread)
 
     try:
         bot.remove_webhook()
@@ -106,6 +102,10 @@ def start():
         thread.start()
         threads.append(thread)    
     
+    thread = Thread(target=bitcoin.start)
+    thread.start()
+    threads.append(thread)
+
     for t in threads:
         t.join()
     

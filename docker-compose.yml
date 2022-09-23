@@ -4,12 +4,13 @@ services:
   redis:
     image: redis:latest
     container_name: boltcard.redis
+    ports:
+      - 6379:6379
     command: 
       - redis-server
       - redis.conf
       - --appendonly yes
-    ports:
-      - 6379:6379
+      - --requirepass ${REDIS_PASS}
     volumes:
       - ./data/redis:/data
     restart: always
@@ -21,7 +22,7 @@ services:
       - 4040:4040
     command:
       - http
-      - boltcard_chatbot
+      - boltcard.chatbot
       - --config=/etc/ngrok.yml
     volumes:
       - ./data/ngrok/ngrok.yaml:/etc/ngrok.yml
@@ -35,8 +36,10 @@ services:
     volumes:
       - ./:/app
     environment:
+      - REDIS_HOST=boltcard.redis
+      - REDIS_PASS=${REDIS_PASS}
       - NGROK_ACTIVE=${NGROK_ACTIVE}
-      - NGROK_WEB_INTERFACE=http://ngrok:4040
+      - NGROK_WEB_INTERFACE=http://boltcard.ngrok:4040
     depends_on:
       - ngrok
     restart: always

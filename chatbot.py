@@ -137,7 +137,7 @@ def load_qrcode(data: object):
     else:
         return bot.reply_to("QRCode invalido.")
 
-@bot.message_handler(commands=["conta", "account"])
+@bot.message_handler(commands=["me", "conta", "account"])
 @checkIfExistWallet
 def me(data: object):
     address = data.from_user.username + "@" + PUBLIC_URL_ENDPOINT.split("//")[-1].replace("/", "")

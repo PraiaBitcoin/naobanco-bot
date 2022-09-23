@@ -40,12 +40,15 @@ fi
 
 LNBITS_DEFAULT_URL+="/api"
 
+REDIS_PASS=$(openssl rand -hex 32)
+
 environment="TELEGRAM_API_TOKEN=${TELEGRAM_API_TOKEN}\n"
 environment+="BTC_HOST=${BTC_HOST}\n"
 environment+="BTC_USER=${BTC_USER}\n"
 environment+="BTC_PASS=${BTC_PASS}\n"
 environment+="BTC_PASS=${BTC_ZMQ_TX}\n"
-environment+="LNBITS_DEFAULT_URL=${LNBITS_DEFAULT_URL}"
+environment+="LNBITS_DEFAULT_URL=${LNBITS_DEFAULT_URL}\n"
+environment+="REDIS_PASS=${REDIS_PASS}"
 
 if [[ ! -z "$PUBLIC_URL_ENDPOINT" ]] ; then
     environment+="\nPUBLIC_URL_ENDPOINT=${PUBLIC_URL_ENDPOINT}\n"

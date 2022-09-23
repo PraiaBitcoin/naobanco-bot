@@ -87,9 +87,6 @@ def lnbits_webhook(payload: dict = Body(...)):
     amount = round(payload.get("amount") / 1000)
     bot.send_message(wallet["id"], f"Você recebeu {amount} sats.")
 
-bot.remove_webhook()
-bot.set_webhook(url=PUBLIC_URL_ENDPOINT  + f"/api/webhook/telegram/{WEBHOOK_TELEGRAM_TOKEN}")
-
 def start():
     threads = []
 
@@ -101,6 +98,14 @@ def start():
     thread.start()
     threads.append(thread)
 
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=PUBLIC_URL_ENDPOINT  + f"/api/webhook/telegram/{WEBHOOK_TELEGRAM_TOKEN}")
+    except:
+        thread = Thread(target=lambda : bot.polling(skip_pending=True))
+        thread.start()
+        threads.append(thread)    
+    
     for t in threads:
         t.join()
     

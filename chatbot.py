@@ -60,8 +60,6 @@ def load_qrcode(data: object):
     if not (qr):
         return bot.reply_to(data, "Não foi possível ler o QRCode.")
     
-    print(qr)
-
     # Delete temporary image.
     remove(f"data/{file_name}")
 

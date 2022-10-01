@@ -14,6 +14,7 @@ from telebot import TeleBot
 from tinydb import Query
 from lnbits import Lnbits
 from qrcode import make as MakeQR
+from lnurl import lnurl_decode
 
 from time import time
 from json import dumps, loads
@@ -59,6 +60,8 @@ def load_qrcode(data: object):
     if not (qr):
         return bot.reply_to(data, "Não foi possível ler o QRCode.")
     
+    print(qr)
+
     # Delete temporary image.
     remove(f"data/{file_name}")
 
@@ -134,8 +137,38 @@ def load_qrcode(data: object):
         message = "Sua carteira de visualização foi importado com sucesso."
         message+= "\n\nℹ️ É recomendável apagar o QRCODE que você enviou."
         return bot.reply_to(data, message)
+    
+    elif ("LNURL" in qr.upper()):
+        try:
+            url = lnurl_decode("LNURL" + qr.split("LNURL")[-1])
+            meta = requests.get(url).json()
+            callback = meta["callback"]
+        except:
+            return bot.reply_to(data, "Lnurl é invalido.")
+        
+        if (meta["tag"] == "withdrawRequest"):
+            try:
+                wallet = db.get(Query().id == data.from_user.id)
+                if (wallet["admin_key"] != None):
+                    wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+                
+                lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+            except:
+                return bot.reply_to(data, "Importe uma carteira.")
+            
+            try:
+                max_withdrawable_sats = int(meta["maxWithdrawable"] / 1000)
+                payment_request = lnbits.create_invoice(max_withdrawable_sats)["payment_request"]
+                
+                r = requests.get(callback, params={"k1": meta["k1"], "pr": payment_request})
+                if (r.json()["status"] == "ERROR"):
+                    return bot.reply_to(data, "Não foi possível resgatar o voucher.")
+                else:
+                    return bot.reply_to(data, f"Você resgatou +{max_withdrawable_sats} sats do voucher.")
+            except:
+                return bot.reply_to(data, "Não foi possível resgatar o voucher.")
     else:
-        return bot.reply_to("QRCode invalido.")
+        return bot.reply_to(data, "QRCode invalido.")
 
 @bot.message_handler(commands=["me", "conta", "account"])
 @checkIfExistWallet

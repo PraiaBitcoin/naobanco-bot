@@ -16,6 +16,7 @@ idna==3.3
 image==1.5.33
 importlib-metadata==4.12.0
 lnbits @ git+https://github.com/GrayFinance/lnbits.git@d39712e383c9d1b01d7b7ef534b4482169324666
+lnurl @ git+https://github.com/GrayFinance/lnurl.git@7a90f5913e7201bbe5502e14796e82220f6735d9
 numpy==1.21.6
 opencv-python==4.6.0.66
 packaging==21.3

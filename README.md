@@ -8,7 +8,8 @@ A simple telegram wallet to use with lnbits.
 - [x] Basic wallet resources (Balance, Transactions, Receive, Pay)
 - [x] Lightning Address support
 - [x] Watch Only Bitcoin Address (Onchain)
-- [ ] Recharge via LNURLw.
+- [x] Recharge via LNURLw
+- [ ] Send funds to a bitcoin address (Onchain)
 
 ## Setup:
 

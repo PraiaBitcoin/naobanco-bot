@@ -1,4 +1,4 @@
-# Lnbits Chatbot
+# Lnbits Chatbot (Beta)
 
 A simple telegram wallet to use with lnbits.
 

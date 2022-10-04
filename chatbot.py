@@ -52,8 +52,20 @@ print(TELEGRAM_API_TOKEN)
 
 @bot.message_handler(commands=["start"])
 def start(data: object):
-    message = "ℹ️ Importe uma carteira apontando á câmera para o  QRCode de administração (Telegram) no manual de instruções."
+    message = "ℹ️ Está é uma simples carteira de Bitcoin via Telegram, você pode importar sua carteira apontando sua câmera para QRCode (Admin Key) no manual de instruções na aba (ChatBot Telegram)."
     return bot.reply_to(data, message)
+
+@bot.message_handler(commands=["help", "ajuda"])
+def list_commands(data: object):
+    message = "ℹ️ Está é uma simples carteira de Bitcoin via Telegram, você pode importar sua carteira apontando sua câmera para QRCode (Admin Key) no manual de instruções na aba (ChatBot Telegram).\n\n"
+    message+= "⚙️ Comandos \n"
+    message+= "**/conta** - Mostra informações sobre á conta.\n"
+    message+= "**/saldo** - Mostra o saldo atual dá sua conta.\n"
+    message+= "**/receber** <valor> - Gera uma fatura de pagamento.\n"
+    message+= "**/pagar** <value> <username, invoice, address, lightning address> - Pagar um (Username, Invoice, Address ou Lightning Address).\n"
+    message+= "**/txs** - Mostrar as últimas 5 transações.\n"
+    message+= "**/onchain** - Gerar um novo endereço onchain."
+    return bot.reply_to(data, message, parse_mode="Markdown")
 
 @bot.message_handler(content_types=["photo", "document"])
 def load_qrcode(data: object):    
@@ -258,17 +270,16 @@ def pay(data: object):
     try:
         amount = int(command[0])
     except:
-        return bot.reply_to(data, "O valor que você digitou é invalido.")
+        amount = 0
     
     address = command[-1]
-
     from_wallet = db.get((Query().id == data.from_user.id) & (Query().admin_key != None))
     if (from_wallet == None):
         return bot.reply_to(data, "Sua carteira é apenas de visualização, não é possível acessar este recurso.")
     
     from_wallet["admin_key"] = rsa.decrypt(unhexlify(from_wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
     from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
-    if ("bc" in address) and (LOOP_OUT_ACTIVE == True) and (bitcoin.validate_address(address)["isvalid"] == True):
+    if ("bc" in address) and (amount > 0) and (LOOP_OUT_ACTIVE == True) and (bitcoin.validate_address(address)["isvalid"] == True):
         # Get bitcoin balance from wallet.
         balance = int(from_lnbits.get_wallet()["balance"] / 1000) / pow(10, 8)
         amount_btc = amount / pow(10, 8)
@@ -376,7 +387,8 @@ def onchain(data: object):
     user_id = data.from_user.id
     wallet = db.get(Query().id == user_id)
     if (wallet.get("zpub") == None):
-        return bot.reply_to(data, "Você precisa importar sua carteira de visualização primeiro, para gerar uma carteira onchain.") 
+        message = "Você precisa importar sua carteira de visualização (onchain) primeiro, para gerar um endereço onchain."
+        return bot.reply_to(data, message) 
     
     zpub = HDKey.from_string(wallet["zpub"])
     zpub.version = NETWORKS[BTC_NETWORK]["zpub"]

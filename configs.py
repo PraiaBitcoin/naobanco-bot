@@ -62,3 +62,11 @@ if (RSA_PUB_KEY == None) and (RSA_PRIVATE_KEY == None):
 if (type(RSA_PRIVATE_KEY) == bytes) and (type(RSA_PUB_KEY) == bytes):
     RSA_PUB_KEY = rsa.PublicKey.load_pkcs1(RSA_PUB_KEY)
     RSA_PRIVATE_KEY = rsa.PrivateKey.load_pkcs1(RSA_PRIVATE_KEY)
+
+LOOP_OUT_ACTIVE = environ.get("LOOP_OUT_ACTIVE", False)
+if (LOOP_OUT_ACTIVE == "true"):
+    LOOP_OUT_ACTIVE = True
+else:
+    LOOP_OUT_ACTIVE = False
+
+LN_SWAP_HOST = environ.get("LN_SWAP_HOST", "http://127.0.0.1:1536")

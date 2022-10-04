@@ -97,6 +97,19 @@ def lnbits_webhook(payload: dict = Body(...)):
     amount = round(payload.get("amount") / 1000)
     bot.send_message(wallet["id"], f"Você recebeu {amount} sats.")
 
+@api.post("/api/webhook/lnswap/{userid}")
+def lnswap_webhook(userid: str, payload: dict = Body(...)):
+    if (payload.get("type") == "loop-out"):
+        txid = payload["to"]["txid"]
+        address = payload["to"]["address"]
+        amount = int(payload["to"]["amount"] * pow(10, 8))
+
+        message = f"O pagamento de {amount} sats para o endereço {address} foi processado com sucesso.\n\n"
+        message+= f"<b>Txid:</b> <code>{txid}</code>"
+        return bot.send_message(userid, message)
+    
+bot.remove_webhook()
+
 def start():
     threads = []
 
@@ -105,7 +118,6 @@ def start():
     threads.append(thread)
 
     try:
-        bot.remove_webhook()
         bot.set_webhook(
             url=f"{PUBLIC_URL_ENDPOINT}/api/webhook/telegram", 
             secret_token=WEBHOOK_TELEGRAM_TOKEN,

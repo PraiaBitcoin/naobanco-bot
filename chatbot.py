@@ -1,18 +1,28 @@
 from services.redis import redis
 from embit.networks import NETWORKS
+
 from embit.script import p2wpkh
 from embit.bip32 import HDKey
 from middlewares import checkIfExistWallet
-from binascii import unhexlify
 
+from binascii import unhexlify
 from lib.rate import get_price_bitcoin_in_brl
 from database import db
+
 from bitcoin import Bitcoin
-from configs import BTC_HOST, BTC_NETWORK, BTC_PASS, BTC_USER, LNBITS_DEFAULT_URL, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY, TELEGRAM_API_TOKEN, RSA_PUB_KEY
+from configs import (
+    LN_SWAP_HOST, LNBITS_DEFAULT_URL, LOOP_OUT_ACTIVE, PUBLIC_URL_ENDPOINT, RSA_PRIVATE_KEY, 
+    BTC_HOST, BTC_NETWORK, BTC_PASS, BTC_USER, 
+    TELEGRAM_API_TOKEN, RSA_PUB_KEY
+)
+
+from mempool import Mempool
 from telebot import TeleBot
+from lnswap import LnSwap
 
 from tinydb import Query
 from lnbits import Lnbits
+
 from qrcode import make as MakeQR
 from lnurl import lnurl_decode
 
@@ -32,10 +42,18 @@ import rsa
 
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
+mempool = Mempool()
 bitcoin = Bitcoin(BTC_HOST)
 bitcoin.auth(BTC_USER, BTC_PASS)
+lnswap = LnSwap(LN_SWAP_HOST)
 
 bot = TeleBot(TELEGRAM_API_TOKEN, parse_mode="HTML")
+print(TELEGRAM_API_TOKEN)
+
+@bot.message_handler(commands=["start"])
+def start(data: object):
+    message = "ℹ️ Importe uma carteira apontando á câmera para o  QRCode de administração (Telegram) no manual de instruções."
+    return bot.reply_to(data, message)
 
 @bot.message_handler(content_types=["photo", "document"])
 def load_qrcode(data: object):    
@@ -74,7 +92,7 @@ def load_qrcode(data: object):
             db.insert({"id": user_id, "username": username, "api": api, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]})
         else:
             db.update({"api": api, "username": username, "admin_key": wallet["adminkey"], "invoice_key": wallet["inkey"]}, Query().id == user_id)
-
+        
         try:
             balance = Lnbits(wallet["adminkey"], wallet["inkey"], url=api).get_wallet()
             if (balance.get("detail") != None):
@@ -172,7 +190,7 @@ def load_qrcode(data: object):
 @checkIfExistWallet
 def me(data: object):
     address = data.from_user.username + "@" + PUBLIC_URL_ENDPOINT.split("//")[-1].replace("/", "")
-    message = f"Você pode receber bitcoins usando este endereço <code>{address}</code>."
+    message = f"📧 Lightning Address é maneira mais fácil de receber bitcoins, apenas envie este código <code>{address}</code> para receber bitcoins."
     return bot.reply_to(data, message)
 
 @bot.message_handler(commands=["balance", "saldo"])
@@ -205,10 +223,19 @@ def receive(data: object):
         wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
     
     lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+    
+    command = data.text.split()[1:]
+    try:
+        amount = float(command[0])
+    except:
+        return bot.reply_to(data, "O valor que você digitou é invalido.")
 
-    amount = int(data.text.split()[-1])
-    invoice = lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
+    symbol = command[-1]
+    if (symbol == "brl"):
+        amount = (amount / get_price_bitcoin_in_brl()["bid"]) * pow(10, 8)
 
+    invoice = lnbits.create_invoice(int(amount), webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")
+    
     payment_hash = invoice["payment_hash"]
     payment_request = invoice["payment_request"]
     
@@ -231,57 +258,85 @@ def pay(data: object):
     try:
         amount = int(command[0])
     except:
-        amount = None
+        return bot.reply_to(data, "O valor que você digitou é invalido.")
     
     address = command[-1]
 
     from_wallet = db.get((Query().id == data.from_user.id) & (Query().admin_key != None))
     if (from_wallet == None):
         return bot.reply_to(data, "Sua carteira é apenas de visualização, não é possível acessar este recurso.")
-
+    
     from_wallet["admin_key"] = rsa.decrypt(unhexlify(from_wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
     from_lnbits = Lnbits(from_wallet["admin_key"], from_wallet["invoice_key"], url=from_wallet["api"])
-    if ("lnbc" in address):
-        pay_invoice = from_lnbits.pay_invoice(address)
-        payment_hash = pay_invoice.get("payment_hash")
-        if (payment_hash == None):
-            return bot.reply_to(data, "Não foi possível pagar á fatura.")
-        else:
-            decode_invoice = from_lnbits.decode_invoice(address)
-            amount = round(decode_invoice.get("amount_msat") / 1000)
-            return bot.reply_to(data, f"Fatura <code>{payment_hash}</code> de {amount} sats paga.")
-    
-    elif (address[0] == "@") and (amount != None):
-        to_wallet = db.get(Query().username == address[1:])
-        if (to_wallet == None) or (to_wallet["id"] == from_wallet["id"]):
-            return bot.reply_to(data, "Não foi possível pagar á fatura.")
+    if ("bc" in address) and (LOOP_OUT_ACTIVE == True) and (bitcoin.validate_address(address)["isvalid"] == True):
+        # Get bitcoin balance from wallet.
+        balance = int(from_lnbits.get_wallet()["balance"] / 1000) / pow(10, 8)
+        amount_btc = amount / pow(10, 8)
+        if (amount_btc > balance):
+            return bot.reply_to(data, "Saldo insuficiente.")
         
-        to_lnbits = Lnbits(to_wallet["admin_key"], to_wallet["invoice_key"], url=to_wallet["api"])
-
-        # Generate lightning invoice.
-        invoice = to_lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")["payment_request"]
-
-        pay_invoice = from_lnbits.pay_invoice(invoice)
-        payment_hash = pay_invoice.get("payment_hash")
-        if (payment_hash == None):
-            return bot.reply_to(data, f"Não foi possível pagar {address}.")
-        else:
-            return bot.reply_to(data, f"{amount} sats foi pago {address}.")
-    
-    elif ("@" in address) and (amount != None):
-        username, service = address.split("@")
-        try:
-            callback = requests.get(f"http://{service}/.well-known/lnurlp/{username}").json()["callback"]   
-            invoice = requests.get(callback, params={"amount": amount * 1000}).json()["pr"]
-        except:
-            return bot.reply_to(data, "Não foi possível identificar o Lightning Address.")
+        loop_in_btc = lnswap.get_info()["LOOP_MIN_BTC"]
+        if (amount_btc < loop_in_btc):
+            return bot.reply_to(data, f"O valor minimo do pagamento é de {int(loop_in_btc * pow(10, 8))} sats.")
         
-        pay_invoice = from_lnbits.pay_invoice(invoice)
+        half_hour_fee = mempool.get_recommended_fees()["halfHourFee"]
+        loop_out = lnswap.create_loop_out(address, amount_btc, feerate=half_hour_fee, webhook=PUBLIC_URL_ENDPOINT + f"/api/webhook/lnswap/{data.from_user.id}")
+        if (loop_out.get("detail")):
+            return bot.reply_to(data, "Não foi possível pagar o endereço.")
+        
+        if (loop_out["from"]["amount"] > balance):
+            return bot.reply_to(data, "Saldo insuficiente.")
+        
+        pay_invoice = from_lnbits.pay_invoice(loop_out["from"]["invoice"])
         payment_hash = pay_invoice.get("payment_hash")
         if (payment_hash == None):
-            return bot.reply_to(data, f"Não foi possível pagar {address}.")
-        else:
-            return bot.reply_to(data, f"{amount} sats foi pagao {address}.")
+            return bot.reply_to(data, "Não foi possível pagar o endereço.")
+        
+        message = f"⛓️ Seu pagamento de {amount} sats para o endereço <code>{address}</code> sera processado em breve.\n\n"
+        message+= "<b>Loop (ID):</b> <code>%s</code>" % (loop_out["id"])
+        return bot.reply_to(data, message)
+    else:
+        if ("lnbc" in address):
+            pay_invoice = from_lnbits.pay_invoice(address)
+            payment_hash = pay_invoice.get("payment_hash")
+            if (payment_hash == None):
+                return bot.reply_to(data, "Não foi possível pagar á fatura.")
+            else:
+                decode_invoice = from_lnbits.decode_invoice(address)
+                amount = round(decode_invoice.get("amount_msat") / 1000)
+                return bot.reply_to(data, f"Fatura <code>{payment_hash}</code> de {amount} sats paga.")
+        
+        elif (address[0] == "@") and (amount != None):
+            to_wallet = db.get(Query().username == address[1:])
+            if (to_wallet == None) or (to_wallet["id"] == from_wallet["id"]):
+                return bot.reply_to(data, "Não foi possível pagar á fatura.")
+            
+            to_lnbits = Lnbits(to_wallet["admin_key"], to_wallet["invoice_key"], url=to_wallet["api"])
+
+            # Generate lightning invoice.
+            invoice = to_lnbits.create_invoice(amount, webhook=PUBLIC_URL_ENDPOINT + "/api/webhook/lnbits")["payment_request"]
+
+            pay_invoice = from_lnbits.pay_invoice(invoice)
+            payment_hash = pay_invoice.get("payment_hash")
+            if (payment_hash == None):
+                return bot.reply_to(data, f"Não foi possível pagar {address}.")
+            else:
+                return bot.reply_to(data, f"{amount} sats foi pago {address}.")
+        
+        elif ("@" in address) and (amount != None):
+            username, service = address.split("@")
+            try:
+                callback = requests.get(f"http://{service}/.well-known/lnurlp/{username}").json()["callback"]   
+                invoice = requests.get(callback, params={"amount": amount * 1000}).json()["pr"]
+            except:
+                return bot.reply_to(data, "Não foi possível identificar o Lightning Address.")
+            
+            pay_invoice = from_lnbits.pay_invoice(invoice)
+            payment_hash = pay_invoice.get("payment_hash")
+            if (payment_hash == None):
+                return bot.reply_to(data, f"Não foi possível pagar {address}.")
+            else:
+                return bot.reply_to(data, f"{amount} sats foi pagao {address}.")
 
 @bot.message_handler(commands=["transactions", "extrato", "txs", "transacoes"])
 @checkIfExistWallet

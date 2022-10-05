@@ -48,7 +48,6 @@ bitcoin.auth(BTC_USER, BTC_PASS)
 lnswap = LnSwap(LN_SWAP_HOST)
 
 bot = TeleBot(TELEGRAM_API_TOKEN, parse_mode="HTML")
-print(TELEGRAM_API_TOKEN)
 
 @bot.message_handler(commands=["start"])
 def start(data: object):
@@ -64,7 +63,14 @@ def list_commands(data: object):
     message+= "**/receber** <valor> - Gera uma fatura de pagamento.\n"
     message+= "**/pagar** <value> <username, invoice, address, lightning address> - Pagar um (Username, Invoice, Address ou Lightning Address).\n"
     message+= "**/txs** - Mostrar as últimas 5 transações.\n"
-    message+= "**/onchain** - Gerar um novo endereço onchain."
+    message+= "**/onchain** - Gerar um novo endereço onchain.\n"
+    message+= "**/apps** - Mostra uma lista de (aplicativos / serviços)."
+    return bot.reply_to(data, message, parse_mode="Markdown")
+
+@bot.message_handler(commands=["apps", "app", "aplicativos", "store", "loja", "lojas"])
+def list_apps(data: object):
+    message = "🕹️ Applicativos\n"
+    message+= "**@** - Pague para uma chave PIX usando Bitcoin."
     return bot.reply_to(data, message, parse_mode="Markdown")
 
 @bot.message_handler(content_types=["photo", "document"])
@@ -262,6 +268,25 @@ def receive(data: object):
 
     caption = f"<code>{payment_request}</code>"
     return bot.send_photo(data.from_user.id, qrcode_bytes, caption=caption)
+
+@bot.message_handler(regexp="lnbc[\w]+", func=lambda data: len(data.text.split()) == 1)
+@checkIfExistWallet
+def paste_to_pay(data: object):
+    address = data.text.split()[0]
+
+    wallet = db.get((Query().id == data.from_user.id) & (Query().admin_key != None))
+    wallet["admin_key"] = rsa.decrypt(unhexlify(wallet["admin_key"]), RSA_PRIVATE_KEY).decode()
+    
+    lnbits = Lnbits(wallet["admin_key"], wallet["invoice_key"], url=wallet["api"])
+
+    pay_invoice = lnbits.pay_invoice(address)
+    payment_hash = pay_invoice.get("payment_hash")
+    if (payment_hash == None):
+        return bot.reply_to(data, "Não foi possível pagar á fatura.")
+    else:
+        decode_invoice = lnbits.decode_invoice(address)
+        amount = round(decode_invoice.get("amount_msat") / 1000)
+        return bot.reply_to(data, f"Fatura <code>{payment_hash}</code> de {amount} sats paga.")
 
 @bot.message_handler(commands=["pay", "pagar"], func=lambda data: len(data.text.split()) >= 2)
 @checkIfExistWallet

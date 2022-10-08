@@ -2,6 +2,8 @@
 
 A simple telegram wallet to use with lnbits.
 
+Donate: ⚡ 0xc384a1af2a1ea6d5@ln.tips
+
 ## Resources:
 
 - [x] Import Lnbits wallet via QRCode

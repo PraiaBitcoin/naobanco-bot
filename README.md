@@ -31,9 +31,8 @@ rpcallowip=0.0.0.0/0
 rpcport=8332
 listen=1
 ```
-3) Create an account on [Ngrok](https://ngrok.com/).
 
-4) Install the bot and configure with few commands.
+3) Install the bot and configure with few commands.
 ```bash
 $ git clone https://github.com/leffw/lnbits-chatbot
 $ cd ./lnbits-chatbot

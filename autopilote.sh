@@ -31,9 +31,6 @@ read -p "LNBITS_DEFAULT_URL: " LNBITS_DEFAULT_URL
 echo -e "\n[STEP 4] Get the domain you will use for ChatBot."
 read -p "PUBLIC_URL_ENDPOINT: " PUBLIC_URL_ENDPOINT
 
-echo -e "\n[STEP 5] Create an account at https://ngrok.com/ and get the access token."
-read -p "NGROK_TOKEN: " NGROK_TOKEN
-
 if [ !LNBITS_DEFAULT_URL ]; then
     LNBITS_DEFAULT_URL="https://legend.lnbits.com"
 fi
@@ -52,15 +49,8 @@ environment+="REDIS_PASS=${REDIS_PASS}"
 
 if [[ ! -z "$PUBLIC_URL_ENDPOINT" ]] ; then
     environment+="\nPUBLIC_URL_ENDPOINT=${PUBLIC_URL_ENDPOINT}\n"
-    environment+="NGROK_ACTIVE=false"
 fi
 
 echo -e $environment > .env
-
-if [[ ! -z "$NGROK_TOKEN" ]]; then 
-    ngrok="version: 2\n"
-    ngrok+="authtoken: \"${NGROK_TOKEN}\""
-    echo -e $ngrok > ./data/ngrok/ngrok.yaml
-fi
 
 echo - "\nUse ./start.sh to start the program."
